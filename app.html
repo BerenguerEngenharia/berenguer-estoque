@@ -4162,6 +4162,10 @@ function renderPreview(evIdParam){
   var falt=tot-ret;
   var pct=tot>0?Math.round(ret/tot*100):100;
 
+  // Separar materiais por origem
+  var matsCarreg = matsProprios.filter(function(m){return !m.transferidoDe;});
+  var matsTransf = matsProprios.filter(function(m){return !!m.transferidoDe;});
+
   // Função auxiliar para renderizar tabela de materiais
   function renderMatTable(mats){
     if(!mats.length) return '<p style="color:#999;font-size:12px;font-style:italic;padding:8px">Nenhum material.</p>';
@@ -4255,9 +4259,7 @@ function renderPreview(evIdParam){
   }
 
   // Resumo
-  // Separar materiais por origem para o resumo
-  var matsCarreg = matsProprios.filter(function(m){return !m.transferidoDe;});
-  var matsTransf = matsProprios.filter(function(m){return !!m.transferidoDe;});
+  // Separar materiais por origem para o resumo (já definidos acima)
   var totCarreg = matsCarreg.reduce(function(s,m){return s+(isInsumo(m.itemId)?(m.qtdSaida||0):(m.patsaida&&m.patsaida.length?m.patsaida.length:(m.qtdSaida||0)));},0);
   var totTransfQty = matsTransf.reduce(function(s,m){return s+(isInsumo(m.itemId)?(m.qtdSaida||0):(m.patsaida&&m.patsaida.length?m.patsaida.length:(m.qtdSaida||0)));},0);
 

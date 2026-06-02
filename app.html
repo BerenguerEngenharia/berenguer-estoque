@@ -4162,118 +4162,144 @@ function renderPreview(evIdParam){
   var falt=tot-ret;
   var pct=tot>0?Math.round(ret/tot*100):100;
 
-  // ── Fonte de dados das transferências recebidas ─────────────
-  // transfReceb vem de ev.transferencias (histórico preciso)
-  // ev.materiais contém TODOS os itens (carregados + transferidos juntos)
-  // Precisamos separar usando o histórico de transferências
+  // ── Helper: consolidar lista de materiais por itemId ────────
+  // Evita duplicatas quando o mesmo item tem múltiplos registros
+  function consolidarMats(lista){
+    var mapa={};
+    lista.forEach(function(m){
+      var id=m.itemId||m.nome;
+      if(!mapa[id]) mapa[id]={nome:m.nome,itemId:m.itemId,qtd:0,pats:[]};
+      if(isInsumo(m.itemId)){
+        mapa[id].qtd+=(m.qtdSaida||0);
+      } else {
+        (m.patsaida||[]).forEach(function(p){
+          if(mapa[id].pats.indexOf(p)<0) mapa[id].pats.push(p);
+        });
+        mapa[id].qtd=mapa[id].pats.length;
+      }
+    });
+    return Object.values(mapa);
+  }
 
-  // Mapear PATs e qtds que vieram por transferência
-  var patsPorTransf = {}; // itemId -> [pats transferidos]
-  var qtdPorTransf  = {}; // itemId -> qtd transferida (insumos)
+  function renderLinhaItem(mat,n){
+    var insumo=isInsumo(mat.itemId);
+    var qtd=insumo?(mat.qtd||mat.qtdSaida||0):(mat.pats?mat.pats.length:(mat.patsaida?mat.patsaida.length:0));
+    var pats=(mat.pats||mat.patsaida||[]);
+    var patsStr=pats.length?pats.join(', '):'—';
+    var bg=n%2===0?'#f5f5f5':'#fff';
+    return '<tr style="background:'+bg+'">'+
+      '<td style="padding:5px 8px;border-bottom:1px solid #ddd;color:#333">'+n+'</td>'+
+      '<td style="padding:5px 8px;border-bottom:1px solid #ddd">'+mat.nome+'</td>'+
+      '<td style="padding:5px 8px;border-bottom:1px solid #ddd;text-align:center;font-weight:bold">'+qtd+'</td>'+
+      '<td style="padding:5px 8px;border-bottom:1px solid #ddd;color:#555;font-size:11px">'+patsStr+'</td>'+
+    '</tr>';
+  }
+
+  // ── Transferências recebidas — mapear por itemId ──────────────
+  var transfPorItem={};
   transfReceb.forEach(function(t){
-    if(!patsPorTransf[t.itemId]) patsPorTransf[t.itemId]=[];
-    if(!qtdPorTransf[t.itemId])  qtdPorTransf[t.itemId]=0;
-    (t.pats||[]).forEach(function(p){ patsPorTransf[t.itemId].push(p); });
-    qtdPorTransf[t.itemId] += (t.qty||0);
+    var id=t.itemId||t.nome;
+    if(!transfPorItem[id]) transfPorItem[id]={itemId:t.itemId,nome:t.nome,pats:[],qtd:0,origens:[]};
+    (t.pats||[]).forEach(function(p){
+      if(transfPorItem[id].pats.indexOf(p)<0) transfPorItem[id].pats.push(p);
+    });
+    transfPorItem[id].qtd+=(t.qty||0);
+    if(transfPorItem[id].origens.indexOf(t.nomeEvDe)<0) transfPorItem[id].origens.push(t.nomeEvDe);
+  });
+  var itensTransf=Object.values(transfPorItem);
+
+  // PATs e qtds totais que vieram por transferência (para excluir da tabela 1)
+  var patsPorTransf={};
+  var qtdPorTransf={};
+  itensTransf.forEach(function(t){
+    patsPorTransf[t.itemId]=t.pats;
+    qtdPorTransf[t.itemId]=t.qtd;
   });
 
-  // ── TABELA 1: Carregamento Próprio ───────────────────────────
-  // Para cada item em ev.materiais, descontar o que veio de transferência
-  var itensCarreg = [];
+  // ── TABELA 1: Carregamento Próprio (consolidado, sem transferidos) ──
+  var matsParaCarreg=[];
   matsProprios.forEach(function(m){
-    var insumo = isInsumo(m.itemId);
-    if(insumo){
-      var qtdTransf = qtdPorTransf[m.itemId]||0;
-      var qtdPropria = Math.max(0,(m.qtdSaida||0) - qtdTransf);
-      if(qtdPropria>0) itensCarreg.push({
-        itemId:m.itemId, nome:m.nome,
-        qtdSaida:qtdPropria, patsaida:[], patRetorno:[], qtdRetorno:0
-      });
+    if(isInsumo(m.itemId)){
+      var qtdT=qtdPorTransf[m.itemId]||0;
+      var qtdP=Math.max(0,(m.qtdSaida||0)-qtdT);
+      if(qtdP>0) matsParaCarreg.push({itemId:m.itemId,nome:m.nome,qtdSaida:qtdP,patsaida:[]});
     } else {
-      var patsTransf = patsPorTransf[m.itemId]||[];
-      var patsProprios = (m.patsaida||[]).filter(function(p){return patsTransf.indexOf(p)<0;});
-      if(patsProprios.length>0) itensCarreg.push({
-        itemId:m.itemId, nome:m.nome,
-        qtdSaida:patsProprios.length, patsaida:patsProprios, patRetorno:[], qtdRetorno:0
-      });
+      var patsT=patsPorTransf[m.itemId]||[];
+      var patsP=(m.patsaida||[]).filter(function(p){return patsT.indexOf(p)<0;});
+      if(patsP.length>0) matsParaCarreg.push({itemId:m.itemId,nome:m.nome,qtdSaida:patsP.length,patsaida:patsP});
     }
   });
+  // Consolidar para não duplicar itens com múltiplos carregamentos
+  var itensCarreg=consolidarMats(matsParaCarreg);
 
   var tSaida;
   if(!itensCarreg.length){
     tSaida='<p style="color:#999;font-size:12px;font-style:italic;padding:8px">Nenhum material carregado diretamente.</p>';
   } else {
     var s1=sortItensPrint(itensCarreg,function(m){return m.nome;},function(m){var f=CAT.find(function(c){return c.id===m.itemId;});return f?f.cat:'Outros';});
-    tSaida=renderTabelaAgrupada(s1.grupos,s1.ordem,function(mat,n){
-      var qtd=isInsumo(mat.itemId)?(mat.qtdSaida||0):(mat.patsaida.length);
-      var pats=mat.patsaida&&mat.patsaida.length?mat.patsaida.join(', '):'—';
-      var bg=n%2===0?'#f5f5f5':'#fff';
-      return '<tr style="background:'+bg+'">'+
-        '<td style="padding:5px 8px;border-bottom:1px solid #ddd;color:#333">'+n+'</td>'+
-        '<td style="padding:5px 8px;border-bottom:1px solid #ddd">'+mat.nome+'</td>'+
-        '<td style="padding:5px 8px;border-bottom:1px solid #ddd;text-align:center;font-weight:bold">'+qtd+'</td>'+
-        '<td style="padding:5px 8px;border-bottom:1px solid #ddd;color:#555;font-size:11px">'+pats+'</td>'+
-      '</tr>';
-    },[{label:'#'},{label:'Material'},{label:'Qtd',center:true},{label:'Patrimônios'}]);
+    tSaida=renderTabelaAgrupada(s1.grupos,s1.ordem,renderLinhaItem,
+      [{label:'#'},{label:'Material'},{label:'Qtd',center:true},{label:'Patrimônios'}]);
   }
 
-  // ── TABELA 2: Recebidos por Transferência ────────────────────
-  // Montar lista de itens transferidos a partir do histórico
-  var itensTransf = [];
-  var transfPorItem = {};
-  transfReceb.forEach(function(t){
-    if(!transfPorItem[t.itemId]) transfPorItem[t.itemId]={itemId:t.itemId,nome:t.nome,pats:[],qtd:0,origens:[]};
-    (t.pats||[]).forEach(function(p){transfPorItem[t.itemId].pats.push(p);});
-    transfPorItem[t.itemId].qtd += (t.qty||0);
-    if(transfPorItem[t.itemId].origens.indexOf(t.nomeEvDe)<0)
-      transfPorItem[t.itemId].origens.push(t.nomeEvDe);
-  });
-  itensTransf = Object.values(transfPorItem);
-
+  // ── TABELA 2: Recebidos por Transferência (já consolidado) ───
   var tTransf='';
   if(itensTransf.length){
     var s2=sortItensPrint(itensTransf,function(m){return m.nome;},function(m){var f=CAT.find(function(c){return c.id===m.itemId;});return f?f.cat:'Outros';});
     tTransf=renderTabelaAgrupada(s2.grupos,s2.ordem,function(mat,n){
       var insumo=isInsumo(mat.itemId);
       var qtd=insumo?mat.qtd:mat.pats.length;
-      var pats=mat.pats&&mat.pats.length?mat.pats.join(', '):'—';
+      var patsStr=mat.pats&&mat.pats.length?mat.pats.join(', '):'—';
       var origem=mat.origens.join(', ');
       var bg=n%2===0?'#f5f5f5':'#fff';
       return '<tr style="background:'+bg+'">'+
         '<td style="padding:5px 8px;border-bottom:1px solid #ddd;color:#333">'+n+'</td>'+
         '<td style="padding:5px 8px;border-bottom:1px solid #ddd">'+mat.nome+'</td>'+
         '<td style="padding:5px 8px;border-bottom:1px solid #ddd;text-align:center;font-weight:bold">'+qtd+'</td>'+
-        '<td style="padding:5px 8px;border-bottom:1px solid #ddd;color:#555;font-size:11px">'+pats+'</td>'+
+        '<td style="padding:5px 8px;border-bottom:1px solid #ddd;color:#555;font-size:11px">'+patsStr+'</td>'+
         '<td style="padding:5px 8px;border-bottom:1px solid #ddd;font-size:11px;color:#1a5090;font-weight:600">'+origem+'</td>'+
       '</tr>';
     },[{label:'#'},{label:'Material'},{label:'Qtd',center:true},{label:'Patrimônios'},{label:'De'}]);
   }
 
-  // ── TABELA 3: Total Geral ─────────────────────────────────────
-  // Usar ev.materiais direto — já é a soma de tudo
-  var consolidado={};
-  matsProprios.forEach(function(m){
+  // ── TABELA 3: Total Geral = Tabela1 + Tabela2 consolidado ────
+  // Unir itensCarreg + itensTransf e consolidar por itemId
+  var totalMapa={};
+  itensCarreg.forEach(function(m){
     var id=m.itemId||m.nome;
-    if(!consolidado[id]) consolidado[id]={nome:m.nome,itemId:m.itemId,qtd:0,pats:[]};
+    if(!totalMapa[id]) totalMapa[id]={nome:m.nome,itemId:m.itemId,qtd:0,pats:[]};
     if(isInsumo(m.itemId)){
-      consolidado[id].qtd+=(m.qtdSaida||0);
+      totalMapa[id].qtd+=(m.qtd||m.qtdSaida||0);
     } else {
-      (m.patsaida||[]).forEach(function(p){
-        if(consolidado[id].pats.indexOf(p)<0) consolidado[id].pats.push(p);
+      (m.pats||m.patsaida||[]).forEach(function(p){
+        if(totalMapa[id].pats.indexOf(p)<0) totalMapa[id].pats.push(p);
       });
-      consolidado[id].qtd=consolidado[id].pats.length;
+      totalMapa[id].qtd=totalMapa[id].pats.length;
     }
   });
-  var consolidadoList=Object.values(consolidado);
-  var s3=sortItensPrint(consolidadoList,function(m){return m.nome;},function(m){var f=CAT.find(function(c){return c.id===m.itemId;});return f?f.cat:'Outros';});
+  itensTransf.forEach(function(m){
+    var id=m.itemId||m.nome;
+    if(!totalMapa[id]) totalMapa[id]={nome:m.nome,itemId:m.itemId,qtd:0,pats:[]};
+    if(isInsumo(m.itemId)){
+      totalMapa[id].qtd+=m.qtd;
+    } else {
+      m.pats.forEach(function(p){
+        if(totalMapa[id].pats.indexOf(p)<0) totalMapa[id].pats.push(p);
+      });
+      totalMapa[id].qtd=totalMapa[id].pats.length;
+    }
+  });
+  var totalList=Object.values(totalMapa);
+  var s3=sortItensPrint(totalList,function(m){return m.nome;},function(m){var f=CAT.find(function(c){return c.id===m.itemId;});return f?f.cat:'Outros';});
   var tGeral=renderTabelaAgrupada(s3.grupos,s3.ordem,function(mat,n){
-    var pats=mat.pats&&mat.pats.length?mat.pats.join(', '):'—';
+    var insumo=isInsumo(mat.itemId);
+    var qtd=insumo?mat.qtd:mat.pats.length;
+    var patsStr=mat.pats&&mat.pats.length?mat.pats.join(', '):'—';
     var bg=n%2===0?'#f5f5f5':'#fff';
     return '<tr style="background:'+bg+'">'+
       '<td style="padding:5px 8px;border-bottom:1px solid #ddd;color:#333">'+n+'</td>'+
       '<td style="padding:5px 8px;border-bottom:1px solid #ddd;font-weight:600">'+mat.nome+'</td>'+
-      '<td style="padding:5px 8px;border-bottom:1px solid #ddd;text-align:center;font-weight:bold">'+mat.qtd+'</td>'+
-      '<td style="padding:5px 8px;border-bottom:1px solid #ddd;color:#555;font-size:11px">'+pats+'</td>'+
+      '<td style="padding:5px 8px;border-bottom:1px solid #ddd;text-align:center;font-weight:bold">'+qtd+'</td>'+
+      '<td style="padding:5px 8px;border-bottom:1px solid #ddd;color:#555;font-size:11px">'+patsStr+'</td>'+
     '</tr>';
   },[{label:'#'},{label:'Material'},{label:'Qtd Total',center:true},{label:'Patrimônios'}]);
 
@@ -4319,8 +4345,8 @@ function renderPreview(evIdParam){
     );
   }
 
-  // Resumo — usar itensCarreg e itensTransf já calculados
-  var totCarreg = itensCarreg.reduce(function(s,m){return s+(isInsumo(m.itemId)?(m.qtdSaida||0):(m.patsaida&&m.patsaida.length?m.patsaida.length:(m.qtdSaida||0)));},0);
+  // Resumo — totais das tabelas 1 e 2
+  var totCarreg = itensCarreg.reduce(function(s,m){return s+(isInsumo(m.itemId)?(m.qtd||m.qtdSaida||0):(m.pats?m.pats.length:(m.patsaida?m.patsaida.length:0)));},0);
   var totTransfQty = itensTransf.reduce(function(s,m){return s+(isInsumo(m.itemId)?m.qtd:m.pats.length);},0);
 
   var tResumo='<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px">'+

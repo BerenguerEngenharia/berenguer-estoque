@@ -4319,10 +4319,9 @@ function renderPreview(evIdParam){
     );
   }
 
-  // Resumo
-  // Separar materiais por origem para o resumo (já definidos acima)
-  var totCarreg = matsCarreg.reduce(function(s,m){return s+(isInsumo(m.itemId)?(m.qtdSaida||0):(m.patsaida&&m.patsaida.length?m.patsaida.length:(m.qtdSaida||0)));},0);
-  var totTransfQty = matsTransf.reduce(function(s,m){return s+(isInsumo(m.itemId)?(m.qtdSaida||0):(m.patsaida&&m.patsaida.length?m.patsaida.length:(m.qtdSaida||0)));},0);
+  // Resumo — usar itensCarreg e itensTransf já calculados
+  var totCarreg = itensCarreg.reduce(function(s,m){return s+(isInsumo(m.itemId)?(m.qtdSaida||0):(m.patsaida&&m.patsaida.length?m.patsaida.length:(m.qtdSaida||0)));},0);
+  var totTransfQty = itensTransf.reduce(function(s,m){return s+(isInsumo(m.itemId)?m.qtd:m.pats.length);},0);
 
   var tResumo='<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px">'+
     '<tbody>'+

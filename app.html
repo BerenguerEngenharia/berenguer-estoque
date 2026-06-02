@@ -1550,10 +1550,12 @@ function renderDet(){
         h+='<div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:14px">';
         h+='<div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:12px;letter-spacing:1px;color:var(--text3);text-transform:uppercase;margin-bottom:8px">Histórico de Transferências</div>';
         transfRecebidas.forEach(function(t){
-          h+='<div style="font-size:12px;color:var(--green);padding:3px 0">⬇ Recebido de <strong>'+t.nomeEvDe+'</strong>: '+t.nome+' — '+t.pats.length+' un ('+t.pats.join(', ')+')</div>';
+          var det = t.qty ? t.qty+' un' : t.pats.length+' un ('+t.pats.join(', ')+')';
+          h+='<div style="font-size:12px;color:var(--green);padding:3px 0">⬇ Recebido de <strong>'+t.nomeEvDe+'</strong>: '+t.nome+' — '+det+'</div>';
         });
         transfEnviadas.forEach(function(t){
-          h+='<div style="font-size:12px;color:var(--orange);padding:3px 0">⬆ Enviado para <strong>'+t.nomeEvPara+'</strong>: '+t.nome+' — '+t.pats.length+' un ('+t.pats.join(', ')+')</div>';
+          var det = t.qty ? t.qty+' un' : t.pats.length+' un ('+t.pats.join(', ')+')';
+          h+='<div style="font-size:12px;color:var(--orange);padding:3px 0">⬆ Enviado para <strong>'+t.nomeEvPara+'</strong>: '+t.nome+' — '+det+'</div>';
         });
         h+='</div>';
       }
@@ -4613,19 +4615,71 @@ function selectAllPats(sel){
 function executarTransferencia(){
   var destId = document.getElementById('transf-ev-dest').value;
   var matIdx = parseInt(document.getElementById('transf-mat-idx').value);
-  var cbs = document.querySelectorAll('.transf-pat-cb:checked');
   if(!destId){toast('Selecione o evento destino','error');return;}
   if(isNaN(matIdx)||matIdx<0){toast('Selecione o material','error');return;}
-  if(!cbs.length){toast('Selecione ao menos um patrimônio','error');return;}
 
   var evA = EVS.find(function(e){return e.id===evAtual;});
   var evB = EVS.find(function(e){return e.id===destId;});
   if(!evA||!evB){toast('Evento não encontrado','error');return;}
-
   var mat = evA.materiais[matIdx];
+
+  // ── INSUMOS: transferir por quantidade ───────────────────────
+  if(isInsumo(mat.itemId)){
+    var qtyInput = document.getElementById('transf-insumo-qty');
+    if(!qtyInput){toast('Selecione a quantidade','error');return;}
+    var qty = parseInt(qtyInput.value)||0;
+    var qs = mat.qtdSaida||0;
+    var qr = mat.qtdRetorno||0;
+    var disp = Math.max(0,qs-qr);
+    if(qty<=0||qty>disp){toast('Quantidade inválida (disponível: '+disp+')','error');return;}
+
+    // Reduzir qtdSaida no evento A
+    mat.qtdSaida = Math.max(0,qs-qty);
+    if(mat.qtdSaida<=0){
+      evA.materiais.splice(matIdx,1);
+    }
+
+    // Adicionar ao evento B
+    var matB = evB.materiais.find(function(m){return m.itemId===mat.itemId;});
+    if(matB){
+      matB.qtdSaida = (matB.qtdSaida||0)+qty;
+    } else {
+      evB.materiais.push({
+        itemId:mat.itemId,
+        nome:mat.nome,
+        qtdSaida:qty,
+        patsaida:[],
+        patRetorno:[],
+        qtdRetorno:0,
+        transferidoDe:evA.nome
+      });
+    }
+
+    // Histórico
+    if(!evA.transferencias) evA.transferencias=[];
+    if(!evB.transferencias) evB.transferencias=[];
+    var reg = {
+      id:'tr'+Date.now(),
+      de:evA.id, nomeEvDe:evA.nome,
+      para:evB.id, nomeEvPara:evB.nome,
+      itemId:mat.itemId, nome:mat.nome,
+      pats:[], qty:qty,
+      data:new Date().toISOString()
+    };
+    evA.transferencias.push(reg);
+    evB.transferencias.push(reg);
+
+    salvar(); renderDet(); renderEv();
+    toast(qty+' un de '+mat.nome+' transferido(s)! 🔄');
+    return;
+  }
+
+  // ── PATRIMÔNIO: transferir por PATs selecionados ─────────────
+  var cbs = document.querySelectorAll('.transf-pat-cb:checked');
+  if(!cbs.length){toast('Selecione ao menos um patrimônio','error');return;}
   var patsTransf = Array.from(cbs).map(function(cb){return isNaN(cb.value)?cb.value:Number(cb.value);});
 
-  // verificar se algum pat já existe no evento B (finalizado)
+  // verificar conflitos no evento B
   var conflitosB=[];
   patsTransf.forEach(function(p){
     evB.materiais.forEach(function(m){
@@ -4643,7 +4697,6 @@ function executarTransferencia(){
   mat.patsaida = (mat.patsaida||[]).filter(function(p){return patsTransf.indexOf(p)<0;});
   mat.patRetorno = (mat.patRetorno||[]).filter(function(p){return patsTransf.indexOf(p)<0;});
   mat.qtdSaida = mat.patsaida.length;
-  // se não sobrou nenhum pat, remover o material do evento A
   if(!mat.patsaida.length){
     evA.materiais.splice(matIdx,1);
   }
@@ -4666,7 +4719,7 @@ function executarTransferencia(){
     });
   }
 
-  // registrar historico em ambos eventos
+  // histórico
   if(!evA.transferencias) evA.transferencias=[];
   if(!evB.transferencias) evB.transferencias=[];
   var reg = {

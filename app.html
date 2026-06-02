@@ -3485,15 +3485,34 @@ function renderRelatorios(){
     ?'<div style="font-size:13px;color:var(--text3);text-align:center;padding:16px">Nenhum evento com 100% no período</div>'
     :okList.map(function(e,i){
       var df=e.data?new Date(e.data+'T12:00:00').toLocaleDateString('pt-BR'):'—';
-      var tot=e.materiais.reduce(function(s,m){return s+(((isInsumo(m.itemId)?( m.qtdSaida||0):(m.patsaida&&m.patsaida.length?m.patsaida.length:(m.qtdSaida||0)))));},0);
-      return '<div class="material-item" style="display:flex;align-items:center;gap:12px;margin-bottom:8px">'+
-        '<div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:20px;color:var(--green);width:28px;flex-shrink:0">#'+(i+1)+'</div>'+
-        '<div style="flex:1"><div style="font-weight:600;font-size:13px">'+e.nome+'</div>'+
-        '<div style="font-size:11px;color:var(--text3);margin-top:2px">📅 '+df+(e.responsavel?' · 👤 '+e.responsavel:'')+'</div></div>'+
-        '<div style="text-align:right;flex-shrink:0">'+
-          '<div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:16px;color:var(--green)">100%</div>'+
-          '<div style="font-size:10px;color:var(--text3)">'+tot+' itens</div>'+
-        '</div></div>';
+      var tot=e.materiais.filter(function(m){return m.carregamentoId;}).reduce(function(s,m){return s+(isInsumo(m.itemId)?(m.qtdSaida||0):(m.patsaida&&m.patsaida.length?m.patsaida.length:(m.qtdSaida||0)));},0);
+      var isPrimeiro = i===0;
+      return '<div style="'+
+        'display:flex;align-items:center;gap:12px;margin-bottom:8px;padding:12px 14px;'+
+        'border-radius:10px;'+
+        'background:'+(isPrimeiro?'rgba(46,204,138,.12)':'rgba(46,204,138,.05)')+';'+
+        'border:1px solid '+(isPrimeiro?'rgba(46,204,138,.4)':'rgba(46,204,138,.15)')+';'+
+        '">'+
+        // posição
+        '<div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:'+(isPrimeiro?'24':'18')+'px;color:var(--green);width:32px;flex-shrink:0;text-align:center">'+
+          (isPrimeiro?'🏆':'#'+(i+1))+
+        '</div>'+
+        // info
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-weight:600;font-size:13px;color:var(--text)">'+e.nome+'</div>'+
+          '<div style="font-size:11px;color:var(--text3);margin-top:2px">'+
+            '📅 '+df+(e.responsavel?' · 👤 '+e.responsavel:'')+
+            (e.local?' · 📍 '+e.local:'')+
+          '</div>'+
+        '</div>'+
+        // badge 100%
+        '<div style="text-align:center;flex-shrink:0">'+
+          '<div style="background:rgba(46,204,138,.2);border:1px solid var(--green);border-radius:8px;padding:4px 10px">'+
+            '<div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:18px;color:var(--green)">100%</div>'+
+            '<div style="font-size:10px;color:var(--text3)">'+tot+' itens</div>'+
+          '</div>'+
+        '</div>'+
+      '</div>';
     }).join('');
 
   var piorMap={};
@@ -3541,11 +3560,16 @@ function renderRelatorios(){
     document.getElementById(elOkId).innerHTML=!okL.length
       ?'<div style="font-size:12px;color:var(--text3);padding:8px 0">Nenhum evento com 100% no período</div>'
       :okL.map(function(e,i){
-        var tot=e.materiais.filter(function(m){return m.carregamentoId;}).reduce(function(s,m){return s+(((isInsumo(m.itemId)?( m.qtdSaida||0):(m.patsaida&&m.patsaida.length?m.patsaida.length:(m.qtdSaida||0)))));},0);
-        return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border)">'+
-          '<span style="font-family:Rajdhani,sans-serif;font-weight:700;color:var(--green);font-size:16px;width:24px">#'+(i+1)+'</span>'+
-          '<div style="flex:1;font-size:13px">'+e.nome+'</div>'+
-          '<div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:13px;color:var(--green)">'+tot+' itens</div>'+
+        var tot=e.materiais.filter(function(m){return m.carregamentoId;}).reduce(function(s,m){return s+(isInsumo(m.itemId)?(m.qtdSaida||0):(m.patsaida&&m.patsaida.length?m.patsaida.length:(m.qtdSaida||0)));},0);
+        var isPrimeiro=i===0;
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;margin-bottom:4px;border-radius:8px;'+
+          'background:'+(isPrimeiro?'rgba(46,204,138,.1)':'transparent')+';'+
+          'border:1px solid '+(isPrimeiro?'rgba(46,204,138,.3)':'var(--border)')+'">' +
+          '<span style="font-family:Rajdhani,sans-serif;font-weight:700;color:var(--green);font-size:'+(isPrimeiro?'18':'14')+'px;width:24px">'+
+            (isPrimeiro?'🏆':'#'+(i+1))+
+          '</span>'+
+          '<div style="flex:1;font-size:13px;font-weight:'+(isPrimeiro?'600':'400')+'">'+e.nome+'</div>'+
+          '<div style="background:rgba(46,204,138,.15);border:1px solid rgba(46,204,138,.3);border-radius:6px;padding:2px 8px;font-family:Rajdhani,sans-serif;font-weight:700;font-size:13px;color:var(--green)">100% · '+tot+'</div>'+
         '</div>';
       }).join('');
     var piorMapP={};

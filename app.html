@@ -4147,40 +4147,33 @@ function renderPreview(evIdParam){
 
   var df=ev.data?new Date(ev.data+'T12:00:00').toLocaleDateString('pt-BR'):'—';
   if(ev.dataFim&&ev.dataFim!==ev.data){df+=' → '+new Date(ev.dataFim+'T12:00:00').toLocaleDateString('pt-BR');}
-  // Materiais próprios (carregamentos)
+  // ev.materiais é a fonte da verdade — inclui carregamentos E transferidos
   var matsProprios = ev.materiais;
 
-  // Transferências recebidas
+  // Transferências recebidas — apenas para exibição informativa (de onde veio)
   var transfReceb = (ev.transferencias||[]).filter(function(t){return t.para===ev.id;});
 
-  // Totais combinados
+  // Total = todos os materiais do evento (já incluem transferidos)
   var tot = matsProprios.reduce(function(s,m){
     return s+(isInsumo(m.itemId)?(m.qtdSaida||0):(m.patsaida&&m.patsaida.length?m.patsaida.length:(m.qtdSaida||0)));
-  },0);
-  // Somar qtd das transferências recebidas
-  tot += transfReceb.reduce(function(s,t){
-    return s+(t.qty||t.pats.length||0);
   },0);
 
   var ret=matsProprios.reduce(function(s,m){return s+(isInsumo(m.itemId)?(m.qtdRetorno||0):(m.patRetorno?m.patRetorno.length:0));},0);
   var falt=tot-ret;
   var pct=tot>0?Math.round(ret/tot*100):100;
 
-  // ── Tabela saída — materiais próprios ────────────────────────
-  var tSaida='<p style="color:#999;font-size:12px;font-style:italic">Nenhum material.</p>';
-  if(matsProprios.length){
-    var evSort = sortItensPrint(matsProprios,
+  // Função auxiliar para renderizar tabela de materiais
+  function renderMatTable(mats){
+    if(!mats.length) return '<p style="color:#999;font-size:12px;font-style:italic;padding:8px">Nenhum material.</p>';
+    var sorted = sortItensPrint(mats,
       function(m){return m.nome;},
-      function(m){
-        var found = CAT.find(function(c){return c.id===m.itemId;});
-        return found ? found.cat : 'Outros';
-      }
+      function(m){var found=CAT.find(function(c){return c.id===m.itemId;});return found?found.cat:'Outros';}
     );
-    tSaida = renderTabelaAgrupada(evSort.grupos, evSort.ordem,
+    return renderTabelaAgrupada(sorted.grupos, sorted.ordem,
       function(mat, n){
         var qtd=isInsumo(mat.itemId)?(mat.qtdSaida||0):(mat.patsaida&&mat.patsaida.length?mat.patsaida.length:(mat.qtdSaida||0));
         var pats=mat.patsaida&&mat.patsaida.length?mat.patsaida.join(', '):'—';
-        var bg = n%2===0?'#f5f5f5':'#fff';
+        var bg=n%2===0?'#f5f5f5':'#fff';
         return '<tr style="background:'+bg+'">'+
           '<td style="padding:5px 8px;border-bottom:1px solid #ddd;color:#333">'+n+'</td>'+
           '<td style="padding:5px 8px;border-bottom:1px solid #ddd">'+mat.nome+'</td>'+
@@ -4192,31 +4185,31 @@ function renderPreview(evIdParam){
     );
   }
 
-  // ── Tabela transferências recebidas ──────────────────────────
+  // ── Tabela saída — só carregamentos próprios ─────────────────
+  var tSaida = renderMatTable(matsCarreg);
+
+  // ── Tabela transferidos — materiais com transferidoDe ────────
   var tTransf='';
-  if(transfReceb.length){
-    var n=1;
-    var linhasTransf=transfReceb.map(function(t){
-      var bg=n%2===0?'#f5f5f5':'#fff';
-      var qtd=t.qty||t.pats.length||0;
-      var pats=t.pats&&t.pats.length?t.pats.join(', '):'—';
-      var origem=t.nomeEvDe||'—';
-      return '<tr style="background:'+bg+'">'+
-        '<td style="padding:5px 8px;border-bottom:1px solid #ddd;color:#333">'+(n++)+'</td>'+
-        '<td style="padding:5px 8px;border-bottom:1px solid #ddd">'+t.nome+'</td>'+
-        '<td style="padding:5px 8px;border-bottom:1px solid #ddd;text-align:center;font-weight:bold">'+qtd+'</td>'+
-        '<td style="padding:5px 8px;border-bottom:1px solid #ddd;color:#555;font-size:11px">'+pats+'</td>'+
-        '<td style="padding:5px 8px;border-bottom:1px solid #ddd;font-size:11px;color:#888">'+origem+'</td>'+
-      '</tr>';
-    }).join('');
-    tTransf='<table style="width:100%;border-collapse:collapse;font-size:12px">'+
-      '<thead><tr>'+
-        '<th style="background:#1a5090;color:#fff;padding:5px 8px;text-align:left">#</th>'+
-        '<th style="background:#1a5090;color:#fff;padding:5px 8px;text-align:left">Material</th>'+
-        '<th style="background:#1a5090;color:#fff;padding:5px 8px;text-align:center">Qtd</th>'+
-        '<th style="background:#1a5090;color:#fff;padding:5px 8px;text-align:left">Patrimônios</th>'+
-        '<th style="background:#1a5090;color:#fff;padding:5px 8px;text-align:left">Origem</th>'+
-      '</tr></thead><tbody>'+linhasTransf+'</tbody></table>';
+  if(matsTransf.length){
+    var sorted2 = sortItensPrint(matsTransf,
+      function(m){return m.nome;},
+      function(m){var found=CAT.find(function(c){return c.id===m.itemId;});return found?found.cat:'Outros';}
+    );
+    tTransf = renderTabelaAgrupada(sorted2.grupos, sorted2.ordem,
+      function(mat, n){
+        var qtd=isInsumo(mat.itemId)?(mat.qtdSaida||0):(mat.patsaida&&mat.patsaida.length?mat.patsaida.length:(mat.qtdSaida||0));
+        var pats=mat.patsaida&&mat.patsaida.length?mat.patsaida.join(', '):'—';
+        var bg=n%2===0?'#f5f5f5':'#fff';
+        return '<tr style="background:'+bg+'">'+
+          '<td style="padding:5px 8px;border-bottom:1px solid #ddd;color:#333">'+n+'</td>'+
+          '<td style="padding:5px 8px;border-bottom:1px solid #ddd">'+mat.nome+'</td>'+
+          '<td style="padding:5px 8px;border-bottom:1px solid #ddd;text-align:center;font-weight:bold">'+qtd+'</td>'+
+          '<td style="padding:5px 8px;border-bottom:1px solid #ddd;color:#555;font-size:11px">'+pats+'</td>'+
+          '<td style="padding:5px 8px;border-bottom:1px solid #ddd;font-size:11px;color:#1a5090">'+( mat.transferidoDe||'—')+'</td>'+
+        '</tr>';
+      },
+      [{label:'#'},{label:'Material'},{label:'Qtd',center:true},{label:'Patrimônios'},{label:'Origem'}]
+    );
   }
 
   // Tabela retorno
@@ -4262,11 +4255,16 @@ function renderPreview(evIdParam){
   }
 
   // Resumo
-  var totTransf=transfReceb.reduce(function(s,t){return s+(t.qty||t.pats.length||0);},0);
+  // Separar materiais por origem para o resumo
+  var matsCarreg = matsProprios.filter(function(m){return !m.transferidoDe;});
+  var matsTransf = matsProprios.filter(function(m){return !!m.transferidoDe;});
+  var totCarreg = matsCarreg.reduce(function(s,m){return s+(isInsumo(m.itemId)?(m.qtdSaida||0):(m.patsaida&&m.patsaida.length?m.patsaida.length:(m.qtdSaida||0)));},0);
+  var totTransfQty = matsTransf.reduce(function(s,m){return s+(isInsumo(m.itemId)?(m.qtdSaida||0):(m.patsaida&&m.patsaida.length?m.patsaida.length:(m.qtdSaida||0)));},0);
+
   var tResumo='<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px">'+
     '<tbody>'+
-    '<tr><td style="padding:5px 8px;border-bottom:1px solid #ddd;font-weight:bold">Saída própria</td><td style="padding:5px 8px;border-bottom:1px solid #ddd">'+matsProprios.reduce(function(s,m){return s+(isInsumo(m.itemId)?(m.qtdSaida||0):(m.patsaida&&m.patsaida.length?m.patsaida.length:(m.qtdSaida||0)));},0)+'</td></tr>'+
-    (totTransf>0?'<tr style="background:#f5f5f5"><td style="padding:5px 8px;border-bottom:1px solid #ddd;font-weight:bold">Recebido por transferência</td><td style="padding:5px 8px;border-bottom:1px solid #ddd;color:#1a5090;font-weight:bold">+'+totTransf+'</td></tr>':'')+
+    '<tr><td style="padding:5px 8px;border-bottom:1px solid #ddd;font-weight:bold">Saída própria</td><td style="padding:5px 8px;border-bottom:1px solid #ddd">'+totCarreg+'</td></tr>'+
+    (totTransfQty>0?'<tr style="background:#f5f5f5"><td style="padding:5px 8px;border-bottom:1px solid #ddd;font-weight:bold">Recebido por transferência</td><td style="padding:5px 8px;border-bottom:1px solid #ddd;color:#1a5090;font-weight:bold">+'+totTransfQty+'</td></tr>':'')+
     '<tr><td style="padding:5px 8px;border-bottom:1px solid #ddd;font-weight:bold">Total no evento</td><td style="padding:5px 8px;border-bottom:1px solid #ddd;font-weight:bold">'+tot+'</td></tr>'+
     '<tr style="background:#f5f5f5"><td style="padding:5px 8px;border-bottom:1px solid #ddd;font-weight:bold">Retornaram</td><td style="padding:5px 8px;border-bottom:1px solid #ddd;color:green;font-weight:bold">'+ret+'</td></tr>'+
     '<tr><td style="padding:5px 8px;border-bottom:1px solid #ddd;font-weight:bold">Pendências</td><td style="padding:5px 8px;border-bottom:1px solid #ddd;'+(falt>0?'color:red;font-weight:bold':'')+'">'+(falt||'Nenhuma')+'</td></tr>'+

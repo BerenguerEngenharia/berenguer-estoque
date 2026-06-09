@@ -1361,23 +1361,22 @@ function renderDet(){
           h+='<span style="font-size:11px;color:var(--text3)">unidades</span>';
           h+='</div></div>';
         } else {
-        saida.forEach(function(p){
-            var ps=String(p);
+        saida_str.forEach(function(ps){
+            var p=isNaN(Number(ps))?ps:Number(ps);
             var v=ret_str.indexOf(ps)>=0&&perda.indexOf(ps)<0;
-            var naArea=bloqueados.has(p);
+            var naArea=bloqueados.has(p)||bloqueados.has(ps);
             var isPerdido=perda.indexOf(ps)>=0;
             // encontrar o idx real deste pat
             var idxReal=idx;
-            g.indices.forEach(function(i){if((ev.materiais[i].patsaida||[]).indexOf(p)>=0)idxReal=i;});
+            g.indices.forEach(function(i){var pp=ev.materiais[i].patsaida||[];if(pp.indexOf(p)>=0||pp.map(String).indexOf(ps)>=0)idxReal=i;});
             if(isPerdido){
-              h+='<span class="pat-tag" style="background:rgba(255,77,109,.12);color:var(--red);border-color:rgba(255,77,109,.3);cursor:default">🔻'+p+'</span>';
+              h+='<span class="pat-tag" style="background:rgba(255,77,109,.12);color:var(--red);border-color:rgba(255,77,109,.3);cursor:default">🔻'+ps+'</span>';
             } else if(naArea){
-              h+='<span class="pat-tag" style="background:rgba(85,94,120,.15);color:var(--text3);border-color:rgba(85,94,120,.3);cursor:not-allowed" title="Em sub-área">🔒 '+p+'</span>';
+              h+='<span class="pat-tag" style="background:rgba(85,94,120,.15);color:var(--text3);border-color:rgba(85,94,120,.3);cursor:not-allowed" title="Em sub-área">🔒 '+ps+'</span>';
             } else {
-              h+='<span class="pat-tag '+(v?'voltou':'faltando')+'" onclick="togPat(\''+evAtual+'\','+idxReal+','+JSON.stringify(p)+')">'+p+'</span>';
+              h+='<span class="pat-tag '+(v?'voltou':'faltando')+'" onclick="togPat(\''+evAtual+'\','+idxReal+','+JSON.stringify(p)+')">'+ps+'</span>';
             }
           });
-          h+='</div></div><div style="display:flex;gap:8px">'+
             '<button class="cbtn v" onclick="todosVGrupo(\''+evAtual+'\','+JSON.stringify(g.indices)+')">✅ Todos voltaram</button>'+
             '<button class="cbtn f" onclick="nenhumVGrupo(\''+evAtual+'\','+JSON.stringify(g.indices)+')">❌ Nenhum voltou</button></div>';
         } // end else non-insumo

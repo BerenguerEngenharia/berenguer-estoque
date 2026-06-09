@@ -2152,9 +2152,19 @@ function togPat(evId,mi,pat){
     return;
   }
   var mat=ev.materiais[mi];
-  if(!mat.patRetorno)mat.patRetorno=[];
-  var i=mat.patRetorno.indexOf(pat);
-  if(i>=0)mat.patRetorno.splice(i,1);else mat.patRetorno.push(pat);
+  if(!mat.patRetorno) mat.patRetorno=[];
+  // Normalizar tipo: comparar sempre como string para evitar 57 !== "57"
+  var patStr=String(pat);
+  var retStr=mat.patRetorno.map(String);
+  var i=retStr.indexOf(patStr);
+  if(i>=0){
+    // remover — recriar array sem este pat
+    mat.patRetorno=mat.patRetorno.filter(function(p){return String(p)!==patStr;});
+  } else {
+    // adicionar — usar o mesmo tipo que está em patsaida
+    var patNorm=(mat.patsaida||[]).find(function(p){return String(p)===patStr;});
+    mat.patRetorno.push(patNorm!==undefined?patNorm:pat);
+  }
   salvar();renderDet();
 }
 function todosVGrupo(evId,indices){

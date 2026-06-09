@@ -1319,7 +1319,7 @@ function renderDet(){
           if(p.eventoId!==ev.id||p.itemId!==g.itemId) return;
           (p.pats||[]).forEach(function(pat){perda.push(String(pat));});
         });
-        var saida_str=saida.map(String);
+        var saida_str=saida.map(String).sort(function(a,b){return Number(a)-Number(b)||a.localeCompare(b);});
         var ret_str=ret.map(String);
         var falt=saida_str.filter(function(p){return ret_str.indexOf(p)<0&&perda.indexOf(p)<0;});
         var volt=saida_str.filter(function(p){return ret_str.indexOf(p)>=0&&perda.indexOf(p)<0;});
@@ -1435,6 +1435,7 @@ function renderDet(){
         h+='<div class="conf-item pendente" style="margin-bottom:8px">';
         h+='<div class="conf-name" style="margin-bottom:8px">'+mat.nome+'</div>';
         if(semArea.length){
+          semArea.sort(function(a,b){return Number(a)-Number(b)||String(a).localeCompare(String(b));});
           h+='<div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:Rajdhani,sans-serif;letter-spacing:.5px">⚠ PENDENTE (não retornou)</div>';
           h+='<div class="missing-pats" style="margin-bottom:8px">';
           semArea.forEach(function(p){h+='<span class="pat-tag faltando">'+p+'</span>';});
@@ -1449,6 +1450,7 @@ function renderDet(){
             porArea[a].push(p);
           });
           Object.keys(porArea).forEach(function(areaNome){
+            porArea[areaNome].sort(function(a,b){return Number(a)-Number(b)||String(a).localeCompare(String(b));});
             h+='<div style="font-size:11px;color:var(--text3);margin-bottom:4px;font-family:Rajdhani,sans-serif;letter-spacing:.5px">🔒 EM SUB-ÁREA: '+areaNome+'</div>';
             h+='<div class="missing-pats" style="margin-bottom:6px">';
             porArea[areaNome].forEach(function(p){

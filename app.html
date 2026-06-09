@@ -1357,7 +1357,7 @@ function renderDet(){
           h+='</div>';
           h+='<div style="display:flex;align-items:center;gap:8px">';
           h+='<span style="font-size:12px;color:var(--text2)">Registrar retorno:</span>';
-          h+='<input type="number" min="0" max="'+qtdS+'" value="'+qtdR+'" data-evid="'+evAtual+'" data-mi="'+g.indices[0]+'" onchange="registrarRetornoInsumo(this)" style="width:70px;padding:5px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;text-align:center">';
+          h+='<input type="number" min="0" max="'+qtdS+'" value="'+qtdR+'" data-evid="'+evAtual+'" data-mi="'+g.indices[0]+'" onchange="registrarRetornoInsumo(this)" style="width:70px;padding:5px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;text-align:center" oninput="if(this.value>'+qtdS+')this.value='+qtdS+'">';
           h+='<span style="font-size:11px;color:var(--text3)">unidades</span>';
           h+='</div></div>';
         } else {
@@ -1651,7 +1651,7 @@ function renderDet(){
         if(ev.status!=='concluido'){
           h+='<div style="display:flex;align-items:center;gap:8px">';
           h+='<span style="font-size:12px;color:var(--text2)">Registrar retorno:</span>';
-          h+='<input type="number" min="0" max="'+g.qtdSaida+'" value="'+g.qtdRetorno+'" data-evid="'+evAtual+'" data-mi="'+g.matIdx+'" onchange="registrarRetornoInsumo(this)" style="width:70px;padding:5px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px;text-align:center">';
+          h+='<input type="number" min="0" max="'+g.qtdSaida+'" value="'+g.qtdRetorno+'" data-evid="'+evAtual+'" data-mi="'+g.matIdx+'" onchange="registrarRetornoInsumo(this)" style="width:70px;padding:5px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px;text-align:center" oninput="if(this.value>'+g.qtdSaida+')this.value='+g.qtdSaida+'">';
           h+='<span style="font-size:11px;color:var(--text3)">un</span>';
           h+='</div>';
         }
@@ -5784,8 +5784,20 @@ function registrarRetornoInsumo(el){
   if(!ev) return;
   var mat=ev.materiais[mi];
   if(!mat) return;
-  var qtd=Math.max(0,Math.min(parseInt(el.value)||0, mat.qtdSaida||0));
-  mat.qtdRetorno=qtd;
+  // Calcular qtdSaida total do grupo (pode ter múltiplos registros do mesmo item)
+  var itemId=mat.itemId;
+  var qtdSaidaTotal=ev.materiais.reduce(function(s,m){
+    return m.itemId===itemId&&m.carregamentoId ? s+(m.qtdSaida||0) : s;
+  },0);
+  var qtd=Math.max(0,Math.min(parseInt(el.value)||0, qtdSaidaTotal));
+  // Distribuir o retorno: zerar todos os registros e colocar tudo no primeiro
+  var primeiroIdx=-1;
+  ev.materiais.forEach(function(m,i){
+    if(m.itemId===itemId&&m.carregamentoId){
+      if(primeiroIdx<0){ primeiroIdx=i; m.qtdRetorno=qtd; }
+      else { m.qtdRetorno=0; }
+    }
+  });
   salvar();renderDet();
   toast('Retorno registrado: '+qtd+' unidades ✅');
 }

@@ -5329,6 +5329,9 @@ function iniciarCameraQR(){
   });
 }
 
+// Canvas reutilizável para captura de frames (leitura via jsQR)
+var _qrCanvas = null, _qrCtx = null;
+
 function scanLoop(){
   if(!qrStream || qrPausado){ qrAnimFrame = requestAnimationFrame(scanLoop); return; }
   var video = document.getElementById('qr-video');
@@ -5336,23 +5339,52 @@ function scanLoop(){
     qrAnimFrame = requestAnimationFrame(scanLoop);
     return;
   }
-  if(!window._barcodeDetector){
-    if(typeof BarcodeDetector !== 'undefined'){
-      window._barcodeDetector = new BarcodeDetector({formats:['qr_code']});
-    } else {
-      mostrarResultadoQR('Leitura automática indisponível neste navegador. Toque em "Usar foto/galeria" abaixo.','var(--orange)');
-      return;
-    }
-  }
-  window._barcodeDetector.detect(video).then(function(codes){
-    if(codes && codes.length > 0){
-      processarQRCode(codes[0].rawValue.trim());
-    } else {
+
+  // Caminho 1: BarcodeDetector nativo (rápido, Android Chrome)
+  if(typeof BarcodeDetector !== 'undefined'){
+    if(!window._barcodeDetector) window._barcodeDetector = new BarcodeDetector({formats:['qr_code']});
+    window._barcodeDetector.detect(video).then(function(codes){
+      if(codes && codes.length > 0){
+        processarQRCode(codes[0].rawValue.trim());
+      } else {
+        qrAnimFrame = requestAnimationFrame(scanLoop);
+      }
+    }).catch(function(){
       qrAnimFrame = requestAnimationFrame(scanLoop);
-    }
-  }).catch(function(){
+    });
+    return;
+  }
+
+  // Caminho 2: jsQR via canvas (funciona em iOS Safari e qualquer navegador)
+  if(typeof jsQR === 'undefined'){
+    // jsQR ainda carregando — aguarda e tenta de novo
     qrAnimFrame = requestAnimationFrame(scanLoop);
-  });
+    return;
+  }
+  if(!_qrCanvas){
+    _qrCanvas = document.createElement('canvas');
+    _qrCtx = _qrCanvas.getContext('2d', { willReadFrequently: true });
+  }
+  // Reduzir resolução para acelerar a leitura em aparelhos mais fracos
+  var MAX_DIM = 640;
+  var vw = video.videoWidth, vh = video.videoHeight;
+  var scale = Math.min(1, MAX_DIM / Math.max(vw, vh));
+  var w = Math.round(vw * scale), h = Math.round(vh * scale);
+  _qrCanvas.width = w; _qrCanvas.height = h;
+  _qrCtx.drawImage(video, 0, 0, w, h);
+  var imageData;
+  try {
+    imageData = _qrCtx.getImageData(0, 0, w, h);
+  } catch(e){
+    qrAnimFrame = requestAnimationFrame(scanLoop);
+    return;
+  }
+  var code = jsQR(imageData.data, w, h, { inversionAttempts: 'dontInvert' });
+  if(code && code.data){
+    processarQRCode(code.data.trim());
+  } else {
+    qrAnimFrame = requestAnimationFrame(scanLoop);
+  }
 }
 
 // ── Foto / galeria a partir do overlay (fallback sem câmera) ──

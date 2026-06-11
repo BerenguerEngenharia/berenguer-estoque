@@ -476,6 +476,19 @@
 <button class="fab" id="fab" onclick="abrirNovoEvento()">+</button>
 <div class="toast" id="toast"></div>
 
+<!-- QR SCANNER OVERLAY -->
+<div class="qr-overlay" id="qr-overlay">
+  <div class="qr-frame">
+    <video class="qr-video" id="qr-video" muted playsinline autoplay></video>
+  </div>
+  <div class="qr-result" id="qr-result">Iniciando câmera...</div>
+  <div class="qr-hint">Mantenha o QR Code centralizado e bem iluminado</div>
+  <button class="qr-close" onclick="usarFotoQR()" style="margin-top:10px;background:rgba(46,204,138,.12);border-color:rgba(46,204,138,.3);color:var(--green)">📁 Usar foto/galeria</button>
+  <button class="qr-close" onclick="pedirManualQR()">⌨️ Digitar manualmente</button>
+  <button class="qr-close" onclick="fecharQR()">✕ Fechar</button>
+  <input type="file" id="qr-file-overlay" accept="image/*" capture="environment" style="display:none" onchange="lerImagemQROverlay(this)">
+</div>
+
 <!-- NOVO EVENTO -->
 <div class="overlay" id="ov-evento">
   <div class="sheet">
@@ -530,10 +543,10 @@
     <div class="form-group" id="mat-grupo-pat">
       <label class="form-label">Números de Patrimônio (separados por vírgula)</label>
       <div class="pat-area"><div class="pat-hint" id="mat-hint">Ex: 101, 102, 103</div><textarea class="pat-input" id="mat-pats" rows="3" placeholder="Digite os números..." oninput="verificarConflitos()"></textarea></div>
-      <button type="button" class="qr-btn" onclick="toast('Câmera ao vivo funciona em iOS 17+ e Android Chrome. Use o botão verde como alternativa.','info')" style="background:rgba(74,158,255,.1);border-color:rgba(74,158,255,.3);color:var(--blue);opacity:.6;cursor:help">📷 ESCANEAR QR CODE (iOS 17+, Chrome)</button>
+      <button type="button" class="qr-btn" onclick="abrirQR()" style="background:rgba(74,158,255,.1);border-color:rgba(74,158,255,.3);color:var(--blue)">📷 ESCANEAR QR CODE (câmera)</button>
       <label class="qr-btn" style="margin-top:6px;background:rgba(46,204,138,.1);border-color:rgba(46,204,138,.3);color:var(--green);display:flex;align-items:center;justify-content:center;cursor:pointer">
-        📁 FOTO / QR CODE (iOS e Android)
-        <input type="file" accept="image/*" capture="environment" onchange="lerImagemQR(this)" style="display:none">
+        📁 FOTO / GALERIA — QR Code
+        <input type="file" accept="image/*" capture="environment" onchange="lerImagemQRSaida(this)" style="display:none">
       </label>
     </div>
     <div id="mat-conflitos" style="display:none;margin-top:8px"></div>
@@ -1300,9 +1313,15 @@ function renderDet(){
     }
     c.innerHTML=h;
   }else if(abaAtual==='conferencia'){
-    var h='<div style="display:flex;gap:8px;margin-bottom:14px">'+
-      '<button onclick="abrirQRRetorno()" style="flex:1;padding:10px;border-radius:10px;border:1px solid rgba(46,204,138,.3);background:rgba(46,204,138,.08);color:var(--green);font-family:Rajdhani,sans-serif;font-weight:700;font-size:13px;cursor:pointer">📷 ESCANEAR RETORNO (câmera ao vivo)</button>'+
-      '<button onclick="abrirPerdasAssistida()" style="flex:1;padding:10px;border-radius:10px;border:1px solid rgba(255,77,109,.3);background:rgba(255,77,109,.08);color:var(--red);font-family:Rajdhani,sans-serif;font-weight:700;font-size:13px;cursor:pointer">🔻 PERDAS ASSISTIDA</button>'+
+    var h='<div style="display:flex;gap:8px;margin-bottom:8px">'+
+      '<button onclick="abrirQRRetorno()" style="flex:1;padding:10px;border-radius:10px;border:1px solid rgba(46,204,138,.3);background:rgba(46,204,138,.08);color:var(--green);font-family:Rajdhani,sans-serif;font-weight:700;font-size:13px;cursor:pointer">📷 ESCANEAR (câmera)</button>'+
+      '<label style="flex:1;padding:10px;border-radius:10px;border:1px solid rgba(46,204,138,.3);background:rgba(46,204,138,.08);color:var(--green);font-family:Rajdhani,sans-serif;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;text-align:center">'+
+        '📁 FOTO / GALERIA'+
+        '<input type="file" accept="image/*" capture="environment" onchange="lerImagemQRRetorno(this)" style="display:none">'+
+      '</label>'+
+    '</div>'+
+    '<div style="margin-bottom:14px">'+
+      '<button onclick="abrirPerdasAssistida()" style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,77,109,.3);background:rgba(255,77,109,.08);color:var(--red);font-family:Rajdhani,sans-serif;font-weight:700;font-size:13px;cursor:pointer">🔻 PERDAS ASSISTIDA</button>'+
     '</div>'+
     '<div style="font-size:12px;color:var(--text2);margin-bottom:14px">Toque nos patrimônios ou escaneie para marcar retorno.</div>';
     var matsConf=ev.materiais.filter(function(m){return m.carregamentoId&&!isInsumoMat(m);});
@@ -5275,7 +5294,7 @@ function scanLoop(){
     if(typeof BarcodeDetector !== 'undefined'){
       window._barcodeDetector = new BarcodeDetector({formats:['qr_code']});
     } else {
-      mostrarResultadoQR('Camera ativa - use o botao verde para tirar foto','var(--orange)');
+      mostrarResultadoQR('Leitura automática indisponível neste navegador. Toque em "Usar foto/galeria" abaixo.','var(--orange)');
       return;
     }
   }
@@ -5290,7 +5309,29 @@ function scanLoop(){
   });
 }
 
+// ── Foto / galeria a partir do overlay (fallback sem câmera) ──
+function usarFotoQR(){
+  // Pausa a câmera (mantém modo qrModo já definido) e abre seletor de foto
+  if(qrAnimFrame){ cancelAnimationFrame(qrAnimFrame); qrAnimFrame = null; }
+  if(qrStream){ qrStream.getTracks().forEach(function(t){ t.stop(); }); qrStream = null; }
+  document.getElementById('qr-file-overlay').click();
+}
+function lerImagemQROverlay(input){
+  // Mantém o overlay aberto — resultado aparece em qr-result via mostrarResultadoQR
+  lerImagemQR(input);
+}
+
 // ── Foto / iOS ───────────────────────────────────────────────
+function lerImagemQRSaida(input){
+  qrModo = 'saida';
+  qrScanned = parsePats(document.getElementById('mat-pats').value);
+  lerImagemQR(input);
+}
+function lerImagemQRRetorno(input){
+  qrModo = 'retorno';
+  qrScanned = [];
+  lerImagemQR(input);
+}
 function lerImagemQR(input){
   if(!input.files || !input.files[0]) return;
   var file = input.files[0];
@@ -5310,7 +5351,6 @@ function lerImagemQR(input){
         var code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
         if(code && code.data){
           processarQRCode(code.data.trim());
-          toast('QR Code lido com sucesso! ✅');
         } else {
           toast('QR Code não encontrado na imagem. Tente novamente com melhor iluminação.','error');
         }
@@ -5322,9 +5362,25 @@ function lerImagemQR(input){
 }
 
 // ── Carregar jsQR ─────────────────────────────────────────────
+var _jsQRCarregando = false;
 function carregarJsQR(cb){
-  // Usa BarcodeDetector nativo do browser - sem biblioteca externa!
-  cb();
+  if(typeof jsQR !== 'undefined'){ cb(); return; }
+  if(_jsQRCarregando){
+    // Já está carregando — aguardar
+    var check = setInterval(function(){
+      if(typeof jsQR !== 'undefined'){ clearInterval(check); cb(); }
+    }, 100);
+    return;
+  }
+  _jsQRCarregando = true;
+  var s = document.createElement('script');
+  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js';
+  s.onload = function(){ _jsQRCarregando = false; cb(); };
+  s.onerror = function(){
+    _jsQRCarregando = false;
+    toast('Erro ao carregar leitor de QR Code. Verifique sua conexão.','error');
+  };
+  document.head.appendChild(s);
 }
 
 // ── Parsear e processar QR ────────────────────────────────────
@@ -5363,7 +5419,10 @@ function processarSaidaQR(parsed){
       }
     } else if(matAtual !== parsed.itemId){
       mostrarResultadoQR('⚠ QR é de tipo diferente do selecionado!', 'var(--red)');
-      setTimeout(function(){ qrPausado = false; qrAnimFrame = requestAnimationFrame(scanLoop); }, 2000);
+      setTimeout(function(){
+        qrPausado = false;
+        if(qrStream) qrAnimFrame = requestAnimationFrame(scanLoop);
+      }, 2000);
       return;
     }
   }
@@ -5378,8 +5437,10 @@ function processarSaidaQR(parsed){
   }
   setTimeout(function(){
     qrPausado = false;
-    mostrarResultadoQR('Pronto — aponte para o próximo', 'var(--text2)');
-    if(qrStream) qrAnimFrame = requestAnimationFrame(scanLoop);
+    if(qrStream){
+      mostrarResultadoQR('Pronto — aponte para o próximo', 'var(--text2)');
+      qrAnimFrame = requestAnimationFrame(scanLoop);
+    }
   }, 1500);
 }
 
@@ -5414,14 +5475,23 @@ function processarRetornoQR(parsed){
   }
   setTimeout(function(){
     qrPausado = false;
-    mostrarResultadoQR('Pronto — aponte para o próximo', 'var(--text2)');
-    if(qrStream) qrAnimFrame = requestAnimationFrame(scanLoop);
+    if(qrStream){
+      mostrarResultadoQR('Pronto — aponte para o próximo', 'var(--text2)');
+      qrAnimFrame = requestAnimationFrame(scanLoop);
+    }
   }, 2000);
 }
 
 function mostrarResultadoQR(msg, cor){
   var el = document.getElementById('qr-result');
   if(el){ el.textContent = msg; el.style.color = cor; }
+  // Se o overlay da câmera não está aberto (fluxo de foto/galeria), avisar via toast
+  var overlay = document.getElementById('qr-overlay');
+  var overlayAberto = overlay && overlay.classList.contains('open');
+  if(!overlayAberto && msg.indexOf('Pronto')!==0 && msg.indexOf('Câmera')!==0){
+    var tipo = cor==='var(--red)' ? 'error' : (cor==='var(--orange)' ? 'info' : 'success');
+    toast(msg, tipo);
+  }
 }
 
 

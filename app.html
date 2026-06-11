@@ -161,8 +161,8 @@
   .qr-btn:hover{background:rgba(74,158,255,.2)}
   .qr-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:999;flex-direction:column;align-items:center;justify-content:center}
   .qr-overlay.open{display:flex}
-  .qr-video{width:100%;max-width:360px;border-radius:12px;border:3px solid var(--blue)}
-  .qr-frame{position:relative;width:100%;max-width:360px}
+  .qr-video{width:100%;max-width:360px;aspect-ratio:1/1;object-fit:cover;border-radius:12px;border:3px solid var(--blue);background:#000}
+  .qr-frame{position:relative;width:100%;max-width:360px;aspect-ratio:1/1}
   .qr-frame::after{content:'';position:absolute;inset:0;border:3px solid var(--accent);border-radius:12px;animation:qrPulse 1.5s infinite}
   @keyframes qrPulse{0%,100%{opacity:1}50%{opacity:.4}}
   .qr-result{margin-top:14px;font-size:14px;color:var(--green);font-family:'Rajdhani',sans-serif;font-weight:700;letter-spacing:.5px;min-height:20px}
@@ -5266,18 +5266,32 @@ function iniciarCameraQR(){
     qrPausado = false;
     var video = document.getElementById('qr-video');
     video.srcObject = stream;
-    video.setAttribute('playsinline', true);
-    video.play().then(function(){
+    video.muted = true;
+    video.setAttribute('muted','');
+    video.setAttribute('playsinline','');
+    video.setAttribute('webkit-playsinline','');
+    var playPromise = video.play();
+    if(playPromise && playPromise.then){
+      playPromise.then(function(){
+        document.getElementById('qr-result').textContent = 'Câmera ativa — aponte para o QR Code';
+        document.getElementById('qr-result').style.color = 'var(--text2)';
+        qrAnimFrame = requestAnimationFrame(scanLoop);
+      }).catch(function(e){
+        document.getElementById('qr-result').textContent = 'Não foi possível iniciar o vídeo. Toque em "Usar foto/galeria".';
+        document.getElementById('qr-result').style.color = 'var(--orange)';
+      });
+    } else {
       document.getElementById('qr-result').textContent = 'Câmera ativa — aponte para o QR Code';
       document.getElementById('qr-result').style.color = 'var(--text2)';
       qrAnimFrame = requestAnimationFrame(scanLoop);
-    });
+    }
   })
   .catch(function(e){
     var msg = 'Erro ao acessar câmera.';
-    if(e.name === 'NotAllowedError') msg = 'Permissão negada. Permita o acesso à câmera e tente novamente.';
+    if(e.name === 'NotAllowedError') msg = 'Permissão negada. Permita o acesso à câmera nas configurações do navegador e tente novamente.';
     else if(e.name === 'NotFoundError') msg = 'Câmera não encontrada.';
     else if(e.name === 'NotReadableError') msg = 'Câmera em uso por outro aplicativo.';
+    else if(e.name === 'OverconstrainedError') msg = 'Configuração de câmera não suportada. Toque em "Usar foto/galeria".';
     document.getElementById('qr-result').textContent = msg;
     document.getElementById('qr-result').style.color = 'var(--red)';
   });
@@ -5363,24 +5377,32 @@ function lerImagemQR(input){
 
 // ── Carregar jsQR ─────────────────────────────────────────────
 var _jsQRCarregando = false;
+var JSQR_CDNS = [
+  'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js',
+  'https://unpkg.com/jsqr@1.4.0/dist/jsQR.min.js'
+];
 function carregarJsQR(cb){
   if(typeof jsQR !== 'undefined'){ cb(); return; }
   if(_jsQRCarregando){
-    // Já está carregando — aguardar
     var check = setInterval(function(){
       if(typeof jsQR !== 'undefined'){ clearInterval(check); cb(); }
     }, 100);
     return;
   }
   _jsQRCarregando = true;
-  var s = document.createElement('script');
-  s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js';
-  s.onload = function(){ _jsQRCarregando = false; cb(); };
-  s.onerror = function(){
-    _jsQRCarregando = false;
-    toast('Erro ao carregar leitor de QR Code. Verifique sua conexão.','error');
-  };
-  document.head.appendChild(s);
+  function tentar(idx){
+    if(idx >= JSQR_CDNS.length){
+      _jsQRCarregando = false;
+      toast('Erro ao carregar leitor de QR Code. Verifique sua conexão.','error');
+      return;
+    }
+    var s = document.createElement('script');
+    s.src = JSQR_CDNS[idx];
+    s.onload = function(){ _jsQRCarregando = false; cb(); };
+    s.onerror = function(){ tentar(idx+1); };
+    document.head.appendChild(s);
+  }
+  tentar(0);
 }
 
 // ── Parsear e processar QR ────────────────────────────────────

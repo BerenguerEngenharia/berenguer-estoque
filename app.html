@@ -5386,25 +5386,77 @@ function lerImagemQR(input){
   reader.onload = function(e){
     var img = new Image();
     img.onload = function(){
-      var canvas = document.createElement('canvas');
-      canvas.width  = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      var ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
       carregarJsQR(function(){
         if(typeof jsQR === 'undefined'){ toast('Biblioteca QR não carregada','error'); return; }
-        var code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
-        if(code && code.data){
-          processarQRCode(code.data.trim());
-        } else {
-          toast('QR Code não encontrado na imagem. Tente novamente com melhor iluminação.','error');
-        }
+        toast('Lendo QR Code... 🔍');
+        // setTimeout dá tempo do toast aparecer antes do processamento (síncrono e pesado)
+        setTimeout(function(){
+          var code = tentarLerQRMultiplo(img);
+          if(code){
+            processarQRCode(code.trim());
+          } else {
+            toast('QR Code não encontrado. Tente aproximar mais, melhorar a luz, ou deixar o código mais reto na foto.','error');
+          }
+        }, 50);
       });
     };
+    img.onerror = function(){ toast('Não foi possível abrir a imagem.','error'); };
     img.src = e.target.result;
   };
   reader.readAsDataURL(file);
+}
+
+// ── Tenta ler QR em várias escalas e rotações ─────────────────
+// Fotos de celular costumam vir em ângulo, com alta resolução e
+// pouco contraste — uma única tentativa na imagem original
+// frequentemente falha. Aqui tentamos combinações de tamanho e
+// rotação até encontrar o código. Tamanho limitado a 1600px para
+// não travar o navegador em fotos muito grandes (12MP+).
+function tentarLerQRMultiplo(img){
+  var w = img.naturalWidth, h = img.naturalHeight;
+  var maxLado = Math.max(w, h);
+
+  var tamanhos = [];
+  tamanhos.push(Math.min(maxLado, 1600));
+  tamanhos.push(1100);
+  tamanhos.push(750);
+  if(maxLado < 900) tamanhos.push(Math.round(maxLado*1.6)); // ampliar fotos pequenas/distantes
+  // remover duplicados e tamanhos inválidos
+  tamanhos = tamanhos.filter(function(v,i,a){ return v>0 && a.indexOf(v)===i; });
+
+  var rotacoes = [0, 90, 270, 180];
+
+  for(var t=0; t<tamanhos.length; t++){
+    var escala = tamanhos[t] / maxLado;
+    var sw = Math.max(1,Math.round(w*escala)), sh = Math.max(1,Math.round(h*escala));
+    for(var r=0; r<rotacoes.length; r++){
+      try {
+        var code = tentarLerQRCanvas(img, sw, sh, rotacoes[r]);
+        if(code) return code.data;
+      } catch(e){ /* ignora e tenta próxima combinação */ }
+    }
+  }
+  return null;
+}
+
+function tentarLerQRCanvas(img, sw, sh, rotacao){
+  var canvas = document.createElement('canvas');
+  var ctx = canvas.getContext('2d');
+  if(rotacao===90||rotacao===270){
+    canvas.width=sh; canvas.height=sw;
+  } else {
+    canvas.width=sw; canvas.height=sh;
+  }
+  ctx.save();
+  switch(rotacao){
+    case 90:  ctx.translate(sh,0); ctx.rotate(Math.PI/2); break;
+    case 180: ctx.translate(sw,sh); ctx.rotate(Math.PI); break;
+    case 270: ctx.translate(0,sw); ctx.rotate(-Math.PI/2); break;
+  }
+  ctx.drawImage(img, 0, 0, sw, sh);
+  ctx.restore();
+  var imageData = ctx.getImageData(0,0,canvas.width,canvas.height);
+  return jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
 }
 
 // ── Carregar jsQR ─────────────────────────────────────────────

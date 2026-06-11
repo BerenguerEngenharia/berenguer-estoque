@@ -875,8 +875,19 @@ function fbGet(){
   });
 }
 
-function fbSet(data){
+function fbSet(data, _semPermissoes){
   // UPSERT: insere se nao existe, atualiza se existe
+  var body = {
+    id: 'main',
+    evs: data.evs||[],
+    cat: data.cat||[],
+    solics: data.solics||[],
+    perdas: data.perdas||[],
+    custos: data.custos||{},
+    ts: data._ts||Date.now()
+  };
+  if(!_semPermissoes) body.permissoes = data.permissoes||PERMISSOES;
+
   return fetch(SB_URL + '/rest/v1/berenguer_data', {
     method: 'POST',
     headers: {
@@ -885,18 +896,17 @@ function fbSet(data){
       'Content-Type': 'application/json',
       'Prefer': 'resolution=merge-duplicates,return=minimal'
     },
-    body: JSON.stringify({
-      id: 'main',
-      evs: data.evs||[],
-      cat: data.cat||[],
-      solics: data.solics||[],
-      perdas: data.perdas||[],
-      custos: data.custos||{},
-      permissoes: data.permissoes||PERMISSOES,
-      ts: data._ts||Date.now()
-    })
+    body: JSON.stringify(body)
   }).then(function(r){
-    if(!r.ok) return r.text().then(function(t){ throw new Error('HTTP '+r.status+': '+t); });
+    if(!r.ok) return r.text().then(function(t){
+      // Coluna 'permissoes' pode não existir ainda na tabela — tenta novamente sem ela
+      if(!_semPermissoes && /permissoes/i.test(t)){
+        console.warn('⚠️ Coluna "permissoes" não existe no Supabase — salvando sem ela. Rode o SQL de migração.');
+        return fbSet(data, true);
+      }
+      throw new Error('HTTP '+r.status+': '+t);
+    });
+  }).then(function(){
     console.log('✅ Salvo no Supabase');
   });
 }
@@ -905,6 +915,8 @@ function fbSet(data){
 var _saveTimer = null;
 var _salvandoAgora = false;
 var ULTIMA_ALTERACAO_LOCAL = 0; // timestamp da última edição local não confirmada na nuvem
+
+var _tentativasSalvar = 0;
 
 function salvar(){
   // Marca imediatamente que há alteração local pendente — evita que o sync
@@ -930,10 +942,15 @@ function salvar(){
     fbSet(payload)
       .then(function(){
         _salvandoAgora = false;
+        _tentativasSalvar = 0;
         console.log('✅ Salvo no Firebase');
       })
       .catch(function(e){
-        console.warn('⚠️ Firebase indisponível — tentando novamente em 5s:', e.message);
+        _tentativasSalvar++;
+        console.warn('⚠️ Erro ao salvar (tentativa '+_tentativasSalvar+'):', e.message);
+        if(_tentativasSalvar>=3){
+          toast('⚠️ Erro ao salvar dados na nuvem! Verifique sua conexão.','error');
+        }
         // Retry automático — mantém _salvandoAgora=true e ULTIMA_ALTERACAO_LOCAL
         // para que o sync de 15s não sobrescreva os dados locais ainda não salvos
         setTimeout(function(){ salvar(); }, 5000);

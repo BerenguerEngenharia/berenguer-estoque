@@ -904,8 +904,13 @@ function fbSet(data){
 // ── SALVAR: Firebase é a fonte principal ────────────────────
 var _saveTimer = null;
 var _salvandoAgora = false;
+var ULTIMA_ALTERACAO_LOCAL = 0; // timestamp da última edição local não confirmada na nuvem
 
 function salvar(){
+  // Marca imediatamente que há alteração local pendente — evita que o sync
+  // de 15s sobrescreva esses dados antes que cheguem na nuvem
+  ULTIMA_ALTERACAO_LOCAL = Date.now();
+
   // 1. Atualiza cache local imediatamente (para não perder se fechar)
   localStorage.setItem('berg_ev', JSON.stringify(EVS));
   localStorage.setItem('berg_cat', JSON.stringify(CAT));
@@ -928,8 +933,10 @@ function salvar(){
         console.log('✅ Salvo no Firebase');
       })
       .catch(function(e){
-        _salvandoAgora = false;
-        console.warn('⚠️ Firebase indisponível — dados no cache local:', e.message);
+        console.warn('⚠️ Firebase indisponível — tentando novamente em 5s:', e.message);
+        // Retry automático — mantém _salvandoAgora=true e ULTIMA_ALTERACAO_LOCAL
+        // para que o sync de 15s não sobrescreva os dados locais ainda não salvos
+        setTimeout(function(){ salvar(); }, 5000);
       });
   }, 800);
 }
@@ -980,6 +987,14 @@ function carregar(){
 function aplicarCloud(d){
   // Aplica dados do Supabase na memória e no cache local
   if(!d || typeof d !== 'object') return;
+  // PROTEÇÃO ANTI-RACE: se há uma alteração local recente ainda não confirmada
+  // na nuvem (cloud._ts mais antigo que nossa última edição), ignora esta
+  // atualização — caso contrário um evento recém-criado pode "sumir" porque
+  // o sync de 15s trouxe dados antigos por cima.
+  if(ULTIMA_ALTERACAO_LOCAL && (!d._ts || d._ts < ULTIMA_ALTERACAO_LOCAL)){
+    console.log('⏭️ Sync ignorado — dados locais mais recentes que a nuvem');
+    return;
+  }
   EVS   = Array.isArray(d.evs)    ? d.evs    : [];
   CAT   = mergeComBase(d.cat);  // garante itens da base (Insumos, EPI, etc)
   SOLICS= Array.isArray(d.solics) ? d.solics : [];

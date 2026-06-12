@@ -5871,8 +5871,7 @@ async function adicionarFuncionario(){
   var nome = document.getElementById('novo-func-nome').value.trim();
   var cpf = document.getElementById('novo-func-cpf').value.trim();
   var cargo = document.getElementById('novo-func-cargo').value;
-  var cpfNum = cpf.replace(/\\D/g,'');
-  if(!nome){ toast('Informe o nome','error'); return; }
+  var cpfNum = cpf.replace(/\D/g,'');if(!nome){ toast('Informe o nome','error'); return; }
   if(cpfNum.length!==11){ toast('CPF inválido — use 11 dígitos','error'); return; }
   try {
     var resp = await fetch(SB_URL+'/rest/v1/berenguer_funcionarios',{

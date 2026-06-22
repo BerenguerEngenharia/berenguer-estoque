@@ -1154,7 +1154,24 @@ function renderEv(){
   var hist=EVS.filter(function(e){return e.status==='concluido';});
   document.getElementById('cnt-campo').textContent=ativos.length;
   var pend=0;
-  ativos.forEach(function(ev){ev.materiais.filter(function(m){return m.carregamentoId&&!isInsumoMat(m);}).forEach(function(m){var s=(m.patsaida&&m.patsaida.length?m.patsaida.length:(m.qtdSaida||0));var r=isInsumo(m.itemId)?(m.qtdRetorno||0):((isInsumo(m.itemId)?(m.qtdRetorno||0):(m.patRetorno?m.patRetorno.length:0)));if(r<s)pend+=(s-r);});});
+  ativos.forEach(function(ev){
+    // PATs transferidos para outros eventos — não contam como pendência
+    var transfEnviados={};
+    (ev.transferencias||[]).filter(function(t){return t.de===ev.id;}).forEach(function(t){
+      if(!transfEnviados[t.itemId]) transfEnviados[t.itemId]={pats:[],qty:0};
+      (t.pats||[]).forEach(function(p){transfEnviados[t.itemId].pats.push(String(p));});
+      transfEnviados[t.itemId].qty+=(t.qty||0);
+    });
+    ev.materiais.filter(function(m){return m.carregamentoId&&!isInsumoMat(m);}).forEach(function(m){
+      var s=(m.patsaida&&m.patsaida.length?m.patsaida.length:(m.qtdSaida||0));
+      var r=(m.patRetorno?m.patRetorno.length:0);
+      // Descontar transferidos
+      var te=transfEnviados[m.itemId];
+      var transf=te?te.pats.length:0;
+      var efetivo=Math.max(0,s-transf);
+      if(r<efetivo) pend+=(efetivo-r);
+    });
+  });
   document.getElementById('cnt-pend').textContent=pend;
   function card(ev){
     var tot=ev.materiais.filter(function(m){return m.carregamentoId&&!isInsumoMat(m);}).reduce(function(s,m){return s+(((isInsumo(m.itemId)?( m.qtdSaida||0):(m.patsaida&&m.patsaida.length?m.patsaida.length:(m.qtdSaida||0)))));},0);
@@ -3477,21 +3494,39 @@ function perdasDoAno(a){
   });
 }
 
+function calcTransfEnviados(ev){
+  // Retorna mapa itemId -> {pats:[], qty:0} dos itens transferidos para fora
+  var mapa={};
+  (ev.transferencias||[]).filter(function(t){return t.de===ev.id;}).forEach(function(t){
+    if(!mapa[t.itemId]) mapa[t.itemId]={pats:[],qty:0};
+    (t.pats||[]).forEach(function(p){mapa[t.itemId].pats.push(String(p));});
+    mapa[t.itemId].qty+=(t.qty||0);
+  });
+  return mapa;
+}
+
 function taxaRetorno(ev){
-  if(ev.status==='concluido'){
-    // evento encerrado: verificar se todos os finalizados retornaram
-    var fin=ev.materiais.filter(function(m){return m.carregamentoId;});
-    var tot=fin.reduce(function(s,m){return s+(((isInsumo(m.itemId)?( m.qtdSaida||0):(m.patsaida&&m.patsaida.length?m.patsaida.length:(m.qtdSaida||0)))));},0);
-    var ret=fin.reduce(function(s,m){return s+((isInsumo(m.itemId)?(m.qtdRetorno||0):(m.patRetorno?m.patRetorno.length:0)));},0);
-    // perdas já foram registradas e descontadas — o que ficou como perdido
-    // foi removido do estoque, então o que restou nos materiais e nao retornou
-    // é o que ficou como perda. Se ret===tot = tudo voltou = 100%
-    return tot===0?100:Math.round(ret/tot*100);
-  }
+  var transfEnv=calcTransfEnviados(ev);
   var fin=ev.materiais.filter(function(m){return m.carregamentoId;});
-  var tot=fin.reduce(function(s,m){return s+(((isInsumo(m.itemId)?( m.qtdSaida||0):(m.patsaida&&m.patsaida.length?m.patsaida.length:(m.qtdSaida||0)))));},0);
-  var ret=fin.reduce(function(s,m){return s+((isInsumo(m.itemId)?(m.qtdRetorno||0):(m.patRetorno?m.patRetorno.length:0)));},0);
-  return tot>0?Math.round(ret/tot*100):0;
+  var tot=0, ret=0;
+  fin.forEach(function(m){
+    var te=transfEnv[m.itemId];
+    if(isInsumo(m.itemId)){
+      var saida=(m.qtdSaida||0);
+      var transf=te?(te.qty||0):0;
+      var efetivo=Math.max(0,saida-transf);
+      tot+=efetivo;
+      ret+=(m.qtdRetorno||0);
+    } else {
+      var patsaida=(m.patsaida||[]).map(String);
+      var patsTransf=te?te.pats:[];
+      var patsEfetivos=patsaida.filter(function(p){return patsTransf.indexOf(p)<0;});
+      tot+=patsEfetivos.length;
+      ret+=(m.patRetorno?m.patRetorno.length:0);
+    }
+  });
+  if(tot===0) return 100; // tudo foi transferido = 100%
+  return Math.round(ret/tot*100);
 }
 
 function renderRelatorios(){

@@ -976,15 +976,30 @@ function repairInsumos(){
 }
 
 function mergeComBase(catCloud){
-  // Garante que todos os itens do CATALOGO_BASE existam no CAT do Supabase.
-  // Itens da nuvem têm prioridade (preserva total/un/nome editados pelo usuário).
-  // Itens novos da base (Insumos, EPI, etc) são inseridos se ainda não existirem.
-  var resultado = Array.isArray(catCloud) && catCloud.length
-    ? JSON.parse(JSON.stringify(catCloud))
-    : JSON.parse(JSON.stringify(CATALOGO_BASE));
+  // Se não há nada na nuvem ainda (primeiro uso), usa o catálogo base completo.
+  if(!Array.isArray(catCloud) || !catCloud.length){
+    return JSON.parse(JSON.stringify(CATALOGO_BASE));
+  }
+  // Se já existe catálogo na nuvem, ele é a fonte da verdade.
+  // Apenas inserimos itens do CATALOGO_BASE que NUNCA foram sincronizados
+  // com a nuvem — identificados pelo fato de a nuvem ter 0 itens total
+  // (situação de primeiro boot após adição de nova categoria no código).
+  // IMPORTANTE: NÃO reinsere itens que foram deliberadamente removidos pelo admin.
+  var resultado = JSON.parse(JSON.stringify(catCloud));
+  // Coletar IDs que já existem na nuvem
+  var idsNaNuvem = new Set(resultado.map(function(c){ return c.id; }));
+  // Só adicionar itens do CATALOGO_BASE que NUNCA existiram na nuvem
+  // (ou seja, são genuinamente novos no código, nunca foram salvos antes)
+  // Para distinguir "nunca existiu" de "foi apagado", guardamos um marcador:
+  // se a nuvem tem pelo menos 1 item da mesma categoria, consideramos que
+  // itens faltantes dessa categoria foram intencionalmente removidos.
+  var catsNaNuvem = new Set(resultado.map(function(c){ return c.cat; }));
   CATALOGO_BASE.forEach(function(base){
-    var jaExiste = resultado.find(function(c){ return c.id === base.id; });
-    if(!jaExiste) resultado.push(JSON.parse(JSON.stringify(base)));
+    if(idsNaNuvem.has(base.id)) return; // já existe — OK
+    // Categoria nunca enviada à nuvem = item genuinamente novo
+    // Categoria já existe na nuvem mas item não = foi removido pelo admin
+    if(catsNaNuvem.has(base.cat)) return; // categoria existe → item foi removido → respeitar
+    resultado.push(JSON.parse(JSON.stringify(base)));
   });
   return resultado;
 }

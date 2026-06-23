@@ -3149,7 +3149,11 @@ function renderPerdas(){
       var qs=m.qtdSaida||0;
       if(qs===0){(ev.carregamentos||[]).forEach(function(cg){(cg.materiais||[]).forEach(function(cm){if(cm.nome===m.nome&&cg.id===m.carregamentoId)qs+=Number(cm.qtd||0);});});}
       var qr=m.qtdRetorno||0;
-      var perdido=Math.max(0,qs-qr);
+      // Descontar quantidade transferida para outros eventos
+      var transfEnv=calcTransfEnviados(ev);
+      var qtdTransf=transfEnv[m.itemId]?transfEnv[m.itemId].qty:0;
+      var efetivo=Math.max(0,qs-qtdTransf);
+      var perdido=Math.max(0,efetivo-qr);
       if(!perdido) return;
       // Verificar se já existe em PERDAS (evitar duplicar)
       var jaExiste=PERDAS.find(function(p){
@@ -6413,7 +6417,8 @@ function abrirPerdasAssistida(){
     var saida_s=saida.map(String);
     var pendentes=saida_s.filter(function(p){return retorno.indexOf(p)<0&&perdidos_pats.indexOf(p)<0;});
     var perdidos=saida_s.filter(function(p){return perdidos_pats.indexOf(p)>=0;});
-    if(!pendentes.length&&!perdidos.length) return;
+    // Só mostrar se há itens genuinamente pendentes (não retornados e não perdidos)
+    if(!pendentes.length) return;
     h+='<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px">';
     h+='<div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:15px;margin-bottom:8px">'+m.nome+'</div>';
     // pendentes - podem ser marcados

@@ -3124,11 +3124,38 @@ function salvarCusto(itemId, val){
 
 function excluirPerdaEvento(eventoId){
   if(!isAdmin()){toast('Apenas admin pode excluir perdas','error');return;}
-  // remover da lista PERDAS - disponivelReal recalcula automaticamente
+  if(!confirm('Remover todas as perdas deste evento e devolver ao estoque?')) return;
+
+  // 1. Remover perdas registradas manualmente em PERDAS[]
   PERDAS=PERDAS.filter(function(p){return p.eventoId!==eventoId&&p.evento!==eventoId;});
-  // limpar perdasAssistidas do evento se existir
+
+  // 2. Limpar perdasAssistidas do evento
   var ev=EVS.find(function(e){return e.id===eventoId;});
   if(ev&&ev.perdasAssistidas) ev.perdasAssistidas=[];
+
+  // 3. Para perdas dinâmicas (insumos de eventos encerrados):
+  // Marcar todos os insumos como totalmente retornados = zera a perda dinamica
+  if(ev){
+    ev.materiais.forEach(function(m){
+      if(!isInsumo(m.itemId)||!m.carregamentoId) return;
+      // Buscar qtdSaida real
+      var qs=m.qtdSaida||0;
+      if(qs===0){(ev.carregamentos||[]).forEach(function(cg){
+        (cg.materiais||[]).forEach(function(cm){
+          if(cm.nome===m.nome&&cg.id===m.carregamentoId) qs+=Number(cm.qtd||0);
+        });
+      });}
+      // Se há perda (qtdRetorno < qtdSaida), ajustar retorno para igual à saida
+      // descontando transferências
+      var transfEnv=calcTransfEnviados(ev);
+      var qtdTransf=transfEnv[m.itemId]?transfEnv[m.itemId].qty:0;
+      var efetivo=Math.max(0,qs-qtdTransf);
+      if((m.qtdRetorno||0)<efetivo){
+        m.qtdRetorno=efetivo;
+      }
+    });
+  }
+
   salvar(); renderPerdas(); renderEstoque(); renderEv();
   toast('Perdas removidas — itens voltaram ao estoque ✅');
 }
@@ -3143,28 +3170,40 @@ function renderPerdas(){
   var perdasInsumosDinamicas=[];
   EVS.forEach(function(ev){
     if(ev.status!=='concluido') return; // só eventos encerrados geram perdas
+
+    // Agrupar materiais por itemId para evitar falsos positivos de múltiplos carregamentos
+    var grupos={};
     ev.materiais.forEach(function(m){
-      var ehInsumo=isInsumo(m.itemId);
-      if(!ehInsumo||!m.carregamentoId) return;
+      if(!isInsumo(m.itemId)||!m.carregamentoId) return;
+      if(!grupos[m.itemId]) grupos[m.itemId]={nome:m.nome,itemId:m.itemId,qs:0,qr:0};
+      // Somar qtdSaida de todos os carregamentos do mesmo item
       var qs=m.qtdSaida||0;
-      if(qs===0){(ev.carregamentos||[]).forEach(function(cg){(cg.materiais||[]).forEach(function(cm){if(cm.nome===m.nome&&cg.id===m.carregamentoId)qs+=Number(cm.qtd||0);});});}
-      var qr=m.qtdRetorno||0;
-      // Descontar quantidade transferida para outros eventos
-      var transfEnv=calcTransfEnviados(ev);
-      var qtdTransf=transfEnv[m.itemId]?transfEnv[m.itemId].qty:0;
-      var efetivo=Math.max(0,qs-qtdTransf);
-      var perdido=Math.max(0,efetivo-qr);
+      if(qs===0){(ev.carregamentos||[]).forEach(function(cg){
+        (cg.materiais||[]).forEach(function(cm){
+          if(cm.nome===m.nome&&cg.id===m.carregamentoId) qs+=Number(cm.qtd||0);
+        });
+      });}
+      grupos[m.itemId].qs+=qs;
+      grupos[m.itemId].qr+=(m.qtdRetorno||0);
+    });
+
+    // Calcular perdas por grupo
+    var transfEnv=calcTransfEnviados(ev);
+    Object.keys(grupos).forEach(function(itemId){
+      var g=grupos[itemId];
+      var qtdTransf=transfEnv[itemId]?transfEnv[itemId].qty:0;
+      var efetivo=Math.max(0,g.qs-qtdTransf);
+      var perdido=Math.max(0,efetivo-g.qr);
       if(!perdido) return;
-      // Verificar se já existe em PERDAS (evitar duplicar)
+      // Verificar se já existe em PERDAS registradas (evitar duplicar)
       var jaExiste=PERDAS.find(function(p){
-        return p.itemId===m.itemId&&p.eventoId===ev.id&&p.tipo==='encerramento';
+        return p.itemId===itemId&&p.eventoId===ev.id&&p.tipo==='encerramento';
       });
       if(jaExiste) return;
-      // Adicionar dinamicamente
       perdasInsumosDinamicas.push({
-        id:'dyn_'+ev.id+'_'+m.itemId,
-        itemId:m.itemId,
-        nome:m.nome,
+        id:'dyn_'+ev.id+'_'+itemId,
+        itemId:itemId,
+        nome:g.nome,
         qty:perdido,
         qtd:perdido,
         pats:[],

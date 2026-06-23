@@ -1106,36 +1106,47 @@ function emCampo(itemId){
   return c;
 }
 function totalPerdido(itemId){
-  var contados=new Set();
+  var total=0;
   // 1. Perdas registradas na lista global PERDAS
+  var patsPerdidos=new Set();
   PERDAS.forEach(function(p){
     if(p.itemId!==itemId) return;
     if(p.pats&&p.pats.length){
-      p.pats.forEach(function(pat){contados.add(String(pat));});
+      p.pats.forEach(function(pat){patsPerdidos.add(String(pat));});
     } else {
-      for(var x=0;x<Number(p.qtd||p.qty||0);x++) contados.add('_'+p.id+'_'+x);
+      total+=Number(p.qtd||p.qty||0);
     }
   });
-  // 2. Insumos não retornados em eventos concluídos (não estão em PERDAS por serem antigos)
+  total+=patsPerdidos.size;
+
+  // 2. Insumos não retornados em eventos concluídos — AGRUPAR por evento/item
   EVS.forEach(function(ev){
     if(ev.status!=='concluido') return;
-    ev.materiais.forEach(function(m){
-      if(m.itemId!==itemId) return;
-      if(!m.carregamentoId) return;
-      var ehInsumo=isInsumoMat(m);
-      if(!ehInsumo) return;
-      // verificar se já está em PERDAS para não duplicar
-      var jaContado=PERDAS.find(function(p){
-        return p.itemId===itemId&&p.eventoId===ev.id&&p.tipo==='encerramento';
-      });
-      if(jaContado) return;
-      var qs=m.qtdSaida||0;
-      if(qs===0){(ev.carregamentos||[]).forEach(function(cg){(cg.materiais||[]).forEach(function(cm){if(cm.nome===m.nome&&cg.id===m.carregamentoId)qs+=Number(cm.qtd||0);});});}
-      var perdido=Math.max(0,qs-(m.qtdRetorno||0));
-      for(var x=0;x<perdido;x++) contados.add('_ev'+ev.id+'_'+m.itemId+'_'+x);
+    // Verificar se já está em PERDAS para não duplicar
+    var jaContado=PERDAS.find(function(p){
+      return p.itemId===itemId&&p.eventoId===ev.id;
     });
+    if(jaContado) return;
+    // Agrupar todos os registros do mesmo item neste evento
+    var qs=0, qr=0;
+    ev.materiais.forEach(function(m){
+      if(m.itemId!==itemId||!m.carregamentoId||!isInsumoMat(m)) return;
+      var mqs=m.qtdSaida||0;
+      if(mqs===0){(ev.carregamentos||[]).forEach(function(cg){
+        (cg.materiais||[]).forEach(function(cm){
+          if(cm.nome===m.nome&&cg.id===m.carregamentoId) mqs+=Number(cm.qtd||0);
+        });
+      });}
+      qs+=mqs;
+      qr+=(m.qtdRetorno||0);
+    });
+    // Descontar transferências
+    var transfEnv=calcTransfEnviados(ev);
+    var qtdTransf=transfEnv[itemId]?transfEnv[itemId].qty:0;
+    var efetivo=Math.max(0,qs-qtdTransf);
+    total+=Math.max(0,efetivo-qr);
   });
-  return contados.size;
+  return total;
 }
 
 function disponivelReal(itemId){

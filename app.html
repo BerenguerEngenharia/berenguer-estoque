@@ -5788,11 +5788,11 @@ function gerarPdfEtiquetas(){
     var MM=3.7795; // px por mm a 96dpi
     var PAG_W=210*MM, PAG_H=297*MM;
     var MARGIN=10*MM;
-    var ETQ=40*MM;  // 4cm x 4cm
-    var GAP=5*MM;
-    var COLS=Math.floor((PAG_W-2*MARGIN+GAP)/(ETQ+GAP)); // 4
-    var ROWS=Math.floor((PAG_H-2*MARGIN+GAP)/(ETQ+GAP)); // 6
-    var PER_PAG=COLS*ROWS; // 24
+    var ETQ=35*MM;  // 3,5cm x 3,5cm
+    var GAP=4*MM;
+    var COLS=Math.floor((PAG_W-2*MARGIN+GAP)/(ETQ+GAP)); // 5
+    var ROWS=Math.floor((PAG_H-2*MARGIN+GAP)/(ETQ+GAP)); // 7
+    var PER_PAG=COLS*ROWS; // 35
 
     // Gerar todos os QR codes como base64
     var total=ate-de+1;
@@ -5810,7 +5810,7 @@ function gerarPdfEtiquetas(){
     }
 
     // ── Montar HTML para impressão como PDF ───────────────
-    var QR_PX   = Math.round(ETQ*0.72); // QR ocupa 72% da etiqueta
+    var QR_PX   = Math.round(28*MM); // QR fixo em 28mm independente do tamanho da etiqueta
     var QR_OFF  = Math.round((ETQ-QR_PX)/2);
     var ETQ_PX  = Math.round(ETQ);
     var GAP_PX  = Math.round(GAP);
